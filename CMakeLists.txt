@@ -7,7 +7,7 @@ add_executable(main ${SRC})
 
 set(ASAN -fsanitize=address -fsanitize=undefined)
 set(CXXFLAGS 
--g -O0
+-g
 -Wall -Wextra -Werror -pedantic 
 -Wno-unused-parameter -Wno-error=unused-variable 
 -Wno-missing-field-initializers

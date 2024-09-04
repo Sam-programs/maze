@@ -1,9 +1,3 @@
-test
-main
-CMakeFiles/*
 .cache/*
-cmake_install.cmake
-CMakeCache.txt
-Makefile
 compile-commands.json
 build/*
