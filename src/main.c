@@ -13,17 +13,29 @@ enum {
     right = 1 << 1,
     up = 1 << 2,
     down = 1 << 3,
-    none = 1 << 4,
-    DIREND = 1 << 5,
+    DIREND = 1 << 4,
+    // none is excluded because it's a placeholder
+    none = 1 << 5,
 };
 
 #define ITER_DIR(name) for (Direction name = 1; name < DIREND; name <<= 1)
 
 typedef int8_t Direction;
 
+static int rand_array[16000];
+static int rand_i = 0;
+// rand but with cache
+int frand(void){
+    return rand();
+    if (rand_i >= 16000){
+        rand_i = 0;
+    }
+    return rand_array[rand_i++];
+}
+
 // Returns the distance of 1 step in the direction `dir` for a 1-dimensional
 // array. `w` is the maze width.
-Direction dir2diff(Direction dir, int w) {
+int dir2diff(Direction dir, int w) {
     switch (dir) {
         case left:
             return -1;
@@ -57,7 +69,7 @@ Direction invertdir(Direction dir) {
 // Searches for 1 more step--adding a one block or backtracking one step--in the
 // maze.
 // `w`,`h` are the width and height of the maze respectively.
-// `maze`, and `hist` must be arrays of size `w * h`. 
+// `maze`, and `hist` must be arrays of size `w * h`.
 // `maze`, hist`, `histi`, and `last_pos` are used to keep information between
 // function calls.
 //
@@ -65,12 +77,10 @@ Direction invertdir(Direction dir) {
 // of the directions of the blocks that it's pointing to.
 void maze_dfs_once(Direction *maze, Direction *hist, int *histi, int *last_pos,
                    int w, int h) {
-    Direction available_dirs[4] = {0};
+    static Direction last_dir = none;
+    Direction available_dirs[1024] = {0};
     int available_amount = 0;
     ITER_DIR(dir) {
-        if (dir == none) {
-            continue;
-        }
         // The check below was added to stop the maze generator from teleporting
         // to other sides when touching an edge
         if ((dir == left && *last_pos % w == 0) ||
@@ -82,6 +92,15 @@ void maze_dfs_once(Direction *maze, Direction *hist, int *histi, int *last_pos,
         int new_pos = *last_pos + dir2diff(dir, w);
         if (maze[new_pos] == 0) {
             available_dirs[available_amount++] = dir;
+            if (dir == left || dir == up) {
+                for (int i = 0; i < 60; i++) {
+                    available_dirs[available_amount++] = dir;
+                }
+            } else {
+                for (int i = 0; i < 59; i++) {
+                    available_dirs[available_amount++] = dir;
+                }
+            }
         }
     }
     if (available_amount == 0) {
@@ -92,42 +111,77 @@ void maze_dfs_once(Direction *maze, Direction *hist, int *histi, int *last_pos,
         *last_pos -= dir2diff(hist[--(*histi)], w);
         return;
     }
-    Direction dir = available_dirs[rand() % available_amount];
+    Direction dir = available_dirs[frand() % available_amount];
+    bool found_other_move = false;
+    for (int i = 0; i < available_amount; i++) {
+        if (available_dirs[i] != last_dir) {
+            found_other_move = true;
+            break;
+        }
+    }
+    if (found_other_move) {
+        if (dir == last_dir) {
+            for (int i = 0; i < 3; i++) {
+                dir = available_dirs[rand() % available_amount];
+                if (dir != last_dir) {
+                    break;
+                }
+            }
+        }
+    }
+    last_dir = dir;
     hist[(*histi)++] = dir;
     maze[*last_pos] |= dir;
     *last_pos += dir2diff(dir, w);
 }
 
-// Moves 1 step in the maze, and deletes dead ends until it reaches the bottom right corner.
-// `w`,`h` are the width and height of the maze respectively.
-// `maze`, and `hist` must be arrays of size `w * h`. 
+// Moves 1 step in the maze, and deletes dead ends until it reaches the bottom
+// right corner. `w`,`h` are the width and height of the maze respectively.
+// `maze`, and `hist` must be arrays of size `w * h`.
 // `maze`, and `player_pos` are used to keep information between function calls
 void maze_solve_once(Direction *maze, int *player_pos, int w, int h) {
     int maze_end = w * h - 1;
-    Direction available_dirs[4] = {0};
+    Direction available_dirs[1024] = {0};
     int available_amount = 0;
     // Reset the maze when the player solves it
     if (*player_pos == maze_end) {
         *player_pos = 0;
-        memset(maze, 0, w * h * sizeof(Direction));
+        //  memset(maze, 0, w * h * sizeof(Direction));
+        // usleep(1000 * 1000);
         return;
     }
 
     ITER_DIR(dir) {
         if (maze[*player_pos] & dir) {
             available_dirs[available_amount++] = dir;
+            if (dir == down || dir == right) {
+                for (int i = 0; i < 200; i++) {
+                    available_dirs[available_amount++] = dir;
+                }
+            }
         }
     }
     if (available_amount > 0) {
-        Direction dir = available_dirs[rand() % available_amount];
+        Direction dir = available_dirs[frand() % available_amount];
+        /*
+        bool found_other_move = false;
+        for (int i = 0; i < available_amount; i++) {
+            if (available_dirs[i] != up && available_dirs[i] != left) {
+                found_other_move = true;
+                break;
+            }
+        }
+        if (found_other_move) {
+            while (dir == up || dir == left) {
+                dir = available_dirs[rand() % available_amount];
+            }
+        }
+        */
         *player_pos += dir2diff(dir, w);
     } else {
         // Scan all the blocks around us. If any of them are pointing to us,
         // mark their direction as an available direction.
         ITER_DIR(dir) {
-            if (dir == none) {
-                continue;
-            }
             if ((dir == left && *player_pos % w == 0) ||
                 ((dir == right) && *player_pos % w == (w - 1)) ||
                 ((dir == up) && *player_pos < w) ||
@@ -140,7 +194,7 @@ void maze_solve_once(Direction *maze, int *player_pos, int w, int h) {
                 available_dirs[available_amount++] = dir;
             }
         }
-        Direction dir = available_dirs[rand() % available_amount];
+        Direction dir = available_dirs[frand() % available_amount];
         *player_pos += dir2diff(dir, w);
         maze[*player_pos] &= ~invertdir(dir); // remove dead paths
     }
@@ -149,20 +203,20 @@ void maze_solve_once(Direction *maze, int *player_pos, int w, int h) {
 // `maze` must be an array of size `w * h`.
 void render_maze(Direction *maze, int w, int h, int last_pos) {
     int i = 0;
-    const int screen_w = GetScreenWidth();
-    const int screen_h = GetScreenHeight();
-    int x_off = 0;
-    int y_off = 0;
-    int block_size;
-    int w_blocks = w * 2 - 1;
-    int h_blocks = h * 2 - 1;
-    if (screen_w / w_blocks < screen_h / h_blocks) {
+    const double screen_w = GetScreenWidth();
+    const double screen_h = GetScreenHeight();
+    double x_off = 0;
+    double y_off = 0;
+    double block_size;
+    double w_blocks = w * 2 + 1;
+    double h_blocks = h * 2 + 1;
+    if ((screen_w / w_blocks) < (screen_h / h_blocks)) {
         block_size = screen_w / w_blocks;
     } else {
         block_size = screen_h / h_blocks;
     }
-    x_off = (screen_w - block_size * w_blocks) / 2;
-    y_off = (screen_h - block_size * h_blocks) / 2;
+    x_off = (screen_w - block_size * w_blocks) / 2.0;
+    y_off = (screen_h - block_size * h_blocks) / 2.0;
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             int render_x;
@@ -196,39 +250,61 @@ void render_maze(Direction *maze, int w, int h, int last_pos) {
     }
     int last_x = last_pos % w;
     int last_y = last_pos / w;
-    DrawRectangle(x_off + last_x * block_size * 2,
-                  y_off + last_y * block_size * 2, block_size, block_size, RED);
+    int lower_bound = screen_w / 100;
+    if (block_size > lower_bound) {
+        DrawRectangle(x_off + last_x * block_size * 2,
+                      y_off + last_y * block_size * 2, block_size, block_size,
+                      RED);
+    } else {
+        DrawRectangle(x_off + last_x * block_size * 2,
+                      y_off + last_y * block_size * 2, lower_bound, lower_bound,
+                      RED);
+    }
 }
 
 int main(void) {
-    int w = 40;
-    int h = 30;
-    Direction *maze = calloc(w * h, 1);
-    Direction *hist = calloc(w * h, 1);
+    SetTraceLogLevel(LOG_NONE);
+    InitWindow(0, 0, "Maze");
+    const double screen_w = GetScreenWidth();
+    const double screen_h = GetScreenHeight();
+
+    int w = screen_w/2 - 10;
+    int h = screen_h/2 - 10;
+    Direction *maze = calloc((w + 1) * h * sizeof(Direction), 1);
+    Direction *hist = calloc((w + 1) * h * sizeof(Direction), 1);
     int histi = 0;
     int last_pos = 0;
     int player_pos = 0;
 
     srand(time(NULL));
 
-    SetTraceLogLevel(LOG_NONE);
-    InitWindow(0, 0, "Maze");
-
+    for (int i = 0;i < 16000;i++){
+        rand_array[i] = rand();
+    }
     int is_solving = false;
     while (!WindowShouldClose()) {
         BeginDrawing();
         ClearBackground(BLUE);
         if (!is_solving) {
-            usleep(1000 * 100);
-            maze_dfs_once(maze, hist, &histi, &last_pos, w, h);
-            is_solving = last_pos == 0;
+            usleep(1000 * 5);
+            while (!is_solving) {
+                maze_dfs_once(maze, hist, &histi, &last_pos, w, h);
+                is_solving = last_pos == 0;
+            }
+            continue;
         } else {
-            usleep(1000 * 100);
-            maze_solve_once(maze, &player_pos, w, h);
-            is_solving = player_pos != 0;
+            usleep(1000 * 50);
+            for (int i = 0; i < 5000 && is_solving; i++) {
+                maze_solve_once(maze, &player_pos, w, h);
+                is_solving = player_pos != 0;
+            }
         }
         render_maze(maze, w, h, is_solving ? player_pos : last_pos);
         EndDrawing();
+        if (!is_solving) {
+            memset(maze, 0, w * h * sizeof(Direction));
+            usleep(1000 * 2000);
+        }
     }
     free(maze);
     free(hist);

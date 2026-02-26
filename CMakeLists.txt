@@ -10,6 +10,7 @@ set(CXXFLAGS
 -g
 -Wall -Wextra -Werror -pedantic 
 -Wno-unused-parameter -Wno-error=unused-variable 
+-Wno-error=unused-but-set-variable
 -Wno-missing-field-initializers
 ${ASAN})
 set(LIBS raylib)
