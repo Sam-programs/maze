@@ -1,2 +1,2 @@
 # Maze generator & solver
-![Video Demo](maze.mp4)
+<video src="maze.mp4" controls></video>
